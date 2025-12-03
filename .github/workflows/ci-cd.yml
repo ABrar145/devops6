@@ -33,6 +33,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set lowercase image vars
+        run: |
+          echo "OWNER_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "REPO_LC=$(echo '${{ github.event.repository.name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+
       - name: Check service has a Dockerfile
         id: check
         run: |
@@ -62,8 +68,8 @@ jobs:
           context: ./${{ matrix.service }}
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ matrix.service }}:latest
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.REPO_LC }}-${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ env.REPO_LC }}-${{ matrix.service }}:${{ github.sha }}
           provenance: false
           sbom: false
 
@@ -88,6 +94,10 @@ jobs:
           TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
         run: |
           set -euo pipefail
+
+          OWNER_LC="$(echo "${OWNER}" | tr '[:upper:]' '[:lower:]')"
+          APP_REPO_LC="$(echo "${APP_REPO}" | tr '[:upper:]' '[:lower:]')"
+
 
           # ---- Git identity & credentials
           git config --global user.name  "GitHub Actions"
@@ -135,14 +145,14 @@ jobs:
           
                     # Normalize any placeholders to the real owner/repo once
           find k8s -type f -name "*deployment*.yaml" -print0 | xargs -0 sed -i -E \
-            "s|image:\s*ghcr\.io/OWNER/REPO-([a-z0-9._-]+):[^[:space:]]+|image: ${REGISTRY}/${OWNER}/${APP_REPO}-\1:latest|g"
+            "s|image:\s*ghcr\.io/OWNER/REPO-([a-z0-9._-]+):[^[:space:]]+|image: ${REGISTRY}/${OWNER_LC}/${APP_REPO_LC}-\1:latest|g"
 
           # Strip trailing spaces (and Windows CRs) on image lines
           find k8s -type f -name "*deployment*.yaml" -print0 | xargs -0 sed -i 's/\r$//; s/[[:space:]]\+$//'
 
           # Bump tags to current SHA
           while IFS= read -r -d '' f; do
-            sed -i -E "s|(image:\s*${REGISTRY}/${OWNER}/${APP_REPO}-[a-z0-9._-]+:)[^[:space:]]+|\1${GITHUB_SHA}|g" "$f"
+            sed -i -E "s|(image:\s*${REGISTRY}/${OWNER_LC}/${APP_REPO_LC}-[a-z0-9._-]+:)[^[:space:]]+|\1${GITHUB_SHA}|g" "$f"
           done < <(find k8s -type f -name "*deployment*.yaml" -print0)
 
           # ---- Bump image tags in ALL *deployment*.yaml files to the current commit SHA
